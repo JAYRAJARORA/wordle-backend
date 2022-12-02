@@ -2,6 +2,7 @@ PRAGMA foreign_keys=ON;
 BEGIN TRANSACTION;
 DROP TABLE IF EXISTS guesses;
 DROP TABLE IF EXISTS games;
+DROP TABLE IF EXISTS results;
 
 -- state - 0 means game in progress, 1 means game finished and won the game, 2 means finished and lost the game
 CREATE TABLE games (
@@ -20,6 +21,14 @@ CREATE TABLE guesses(
     guess_number INTEGER NOT NULL,
     FOREIGN KEY(game_id) REFERENCES games(game_id),
     FOREIGN KEY(valid_word_id) REFERENCES valid_words(valid_word_id)
+);
+
+CREATE TABLE results(
+	game_id VARCHAR,
+    username VARCHAR NOT NULL,
+    decision VARCHAR NOT NULL,
+    final_score INTEGER NOT NULL,
+    FOREIGN KEY(game_id) REFERENCES games(game_id)
 );
 
 CREATE INDEX games_idx_usernamestate ON games(username, state);

@@ -14,7 +14,8 @@ app = Quart(__name__)
 QuartSchema(app, tags=[
                        {"name": "Games", "description": "APIs for creating a game and playing a game for a particular user"},
                        {"name": "Statistics", "description": "APIs for checking game statistics for a user"},
-                       {"name": "Root", "description": "Root path returning html"}])
+                       {"name": "Root", "description": "Root path returning html"},
+                       {"name": "Leaderboard", "description":"TO display leaderboard"}])
 app.config.from_file(f"./etc/wordle.toml", toml.load)
 
 
@@ -181,6 +182,7 @@ async def play_game_or_check_progress(db, username, game_id, guess=None):
         # when the user guessed the correct word
         if guess == secret_word:
             state = 1
+            final_dec = "Win"
 
         valid_word_output = await db.fetch_one(
             """
@@ -202,6 +204,7 @@ async def play_game_or_check_progress(db, username, game_id, guess=None):
             # user lost the game
             if guess_remaining == 0 and state == 0:
                 state = 2
+                final_dec = "Loss"
             await db.execute(
                 """
                 UPDATE games 
@@ -229,6 +232,18 @@ async def play_game_or_check_progress(db, username, game_id, guess=None):
                 VALUES(:game_id, :valid_word_id, :guess_number)
                 """,
                 values={"game_id": game_id, "valid_word_id": valid_word_id, "guess_number": guess_number}
+            )
+        if(state == 1 or state == 2):
+            if(state == 1):
+                final_score = guess_remaining+1
+            else:
+                final_score = 0
+            await db.execute(
+                """
+                INSERT INTO results(game_id, username, decision, final_score)
+                VALUES(:game_id, :username, :decision, :final_score)
+                """,
+                values={"game_id": game_id, "username": username, "decision": final_dec, "final_score": final_score}
             )
     # Prepare the response
     guess_output = await db.fetch_all(
@@ -282,7 +297,72 @@ def compare(secret_word, guess):
 
     return correct_positions, incorrect_positions
 
+@tag(["Leaderboard"])
+@app.route("/leaderboard", methods=["GET"])
+async def leader_board():
+    """ Check the list of users in Top 10 of the leaderboard based on average scores """
+    db = await _get_db()
+    username = request.authorization.username
 
+    # showing only completed games
+    usernames = await db.fetch_all(
+        """
+        SELECT distinct(username)
+        FROM results 
+        ORDER BY username ASC
+        """
+    )   
+    result_games = []
+    for username in usernames:
+        all_results = await db.fetch_all(
+            """
+            SELECT final_score
+            FROM results 
+            WHERE username=:username  
+            """, 
+            values={"username":username[0]}
+        )
+        total = 0
+        count = 0
+        for final_score in all_results:
+            total = total + final_score[0]
+            count = count + 1
+        average = total/count
+        result_games.append({
+            "username": username[0],
+            "average": average
+        })
+
+    return result_games
+
+@tag(["Leaderboard"])
+@app.route("/leaderboard/<string:game_id>", methods=["GET"])
+async def games_result(game_id):
+    """ Fetch the final result of the users game using the game id """
+    db = await _get_db()
+    username = request.authorization.username
+
+    # showing only completed games
+    games_output = await db.fetch_all(
+        """
+        SELECT game_id, username, decision, final_score 
+        FROM results 
+        WHERE game_id =:game_id
+        """, 
+        values={"game_id":game_id}
+    )
+
+    result_game = []
+    for game_id, username, decision, final_score in games_output:
+        result_game.append({
+            "game_id": game_id,
+            "username": username,
+            "decision": decision,
+            "final_score": final_score
+        })
+ 
+    return result_game
+    
 # Error status: Client error.
 @app.errorhandler(RequestSchemaValidationError)
 def bad_request(e):
