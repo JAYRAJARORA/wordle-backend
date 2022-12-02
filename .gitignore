@@ -1,3 +1,10 @@
-/var/game.db
+/var/primary/mount/*
+/var/primary/mount/*
+/var/secondary/mount/*
+/var/primary/data/*
+/var/secondary/data/*
+/var/tertiary/mount/*
+/var/tertiary/data/*
+
 /var/user.db
 __pycache__/
