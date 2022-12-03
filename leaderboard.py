@@ -34,11 +34,14 @@ async def add_game_results(data):
 
     if status not in ['win', 'loss']:
         abort(400, "Please pass the status of the game as either win or loss")
+    guess_number = data['guess_number']
+    if status == 'loss' and guess_number != 6:
+        abort(400, "Loss always requires 6 guesses")
     # compute score from the number of guess and game status
     if status == 'loss':
         game_score = 0
     else:
-        guess_number = data['guess_number']
+
         if guess_number < 1 or guess_number > 6:
             abort(400, "Please enter the guess number between 1 and 6 if game status is win")
 
@@ -63,7 +66,7 @@ async def add_game_results(data):
 @tag(["Leaderboard"])
 @app.route("/leaderboard", methods=["GET"])
 async def leaderboard():
-    """ Retrieve the list of top 10 users of the leaderboard based on their average scores """
+    """ Retrieve the list of top 10 users of the wordle game based on their average scores """
     r = _initialize_redis()
 
     avg_score_result = r.zrevrange("wordle_leaderboard", 0, 9, True)
