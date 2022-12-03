@@ -4,6 +4,7 @@ import toml
 from quart import Quart, request, jsonify, abort
 from quart_schema import QuartSchema, tag
 import redis
+import collections
 
 # Initialize the app
 app = Quart(__name__)
@@ -32,25 +33,24 @@ async def index():
 
 @tag(["Leaderboard"])
 @app.route("/results", methods=["POST"])
-async def add_game_results(game_id):
+async def add_game_results():
     """ Posting the results of the game. Pass username, status as win/loss and the number of guesses"""
     data = await request.json
     r = _initialize_redis()
     if 'username' not in data:
         abort(400, "Please enter username")
-    if 'status' not in data or 'status' not in ['win', 'loss']:
+    if 'status' not in data or data['status'] not in ['win', 'loss']:
         abort(400, "Please pass the status of the game as either win or loss")
     username = data['username']
     status = data['status']
     if status == 'win' and 'guess_number' not in data:
         abort(400, "Please pass the guess number if game status is win")
 
-    guess_number = data['guess_number']
-
     # compute score from the number of guess and game status
     if status == 'loss':
         game_score = 0
     else:
+        guess_number = int(data['guess_number'])
         game_score = 6 - guess_number + 1
 
     # if redis key is not created it automatically create a key
@@ -65,7 +65,7 @@ async def add_game_results(game_id):
 
     avg_score = total_score / number_of_games
 
-    r.zadd("wordle_leaderboard:" + username, {"users:" + username: avg_score})
+    r.zadd("wordle_leaderboard", {"users:" + username: avg_score})
     return {"Message": "Game results successfully posted."}, 201
 
 
@@ -81,13 +81,13 @@ async def leaderboard():
     # no users in the redis
     if len(avg_score_result) == 0:
         return "Please post results to retrieve the top 10 users by average score", 200
-
-    leaderboard_result = {}
+    print(avg_score_result)
+    leaderboard_result = []
 
     for user, score in avg_score_result:
-        user = user.decode('UTF-8').strip(':')[1]
-        score = int(score.decode('UTF-8'))
-        leaderboard_result[user] = score
+        user = user.decode('UTF-8').split(':')[1]
+        leaderboard_result.append({"username": user,  "score": score})
+
     return leaderboard_result, 200
 
 
