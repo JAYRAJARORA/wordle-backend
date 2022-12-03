@@ -1,5 +1,6 @@
 # Imports
 import dataclasses
+import itertools
 import random
 import textwrap
 import uuid
@@ -12,10 +13,10 @@ from quart_schema import QuartSchema, RequestSchemaValidationError, validate_req
 # Initialize the app
 app = Quart(__name__)
 QuartSchema(app, tags=[
-                       {"name": "Games", "description": "APIs for creating a game and playing a game for a particular user"},
+                       {"name": "Games", "description": "APIs for creating and playing a game for a particular user"},
                        {"name": "Statistics", "description": "APIs for checking game statistics for a user"},
-                       {"name": "Root", "description": "Root path returning html"},
-                       {"name": "Leaderboard", "description":"TO display leaderboard"}])
+                       {"name": "Root", "description": "Root path returning html"}
+                    ])
 app.config.from_file(f"./etc/wordle.toml", toml.load)
 
 
@@ -24,21 +25,32 @@ class Word:
     guess: str
 
 
+db_list = ['GAME_URL_PRIMARY', 'GAME_URL_SECONDARY', 'GAME_URL_TERTIARY']
+iterator = itertools.cycle(db_list)
+
+
 # Establish database connection
-async def _get_db():
-    db = getattr(g, "_sqlite_db", None)
-    if db is None:
-        db = g._sqlite_db = databases.Database(app.config["DATABASES"]["GAME_URL"])
-        await db.connect()
+async def _get_read_db(db):
+    db = g._sqlite_read_db = databases.Database(app.config["DATABASES"][db])
+    await db.connect()
+    return db
+
+
+async def _get_write_db():
+    db = g._sqlite_write_db = databases.Database(app.config["DATABASES"]['GAME_URL_PRIMARY'])
+    await db.connect()
     return db
 
 
 # Terminate database connection
 @app.teardown_appcontext
 async def close_connection(exception):
-    db = getattr(g, "_sqlite_db", None)
-    if db is not None:
-        await db.disconnect()
+    write_db = getattr(g, "_sqlite_write_db", None)
+    if write_db is not None:
+        await write_db.disconnect()
+    read_db = getattr(g, "_sqlite_read_db", None)
+    if read_db is not None:
+        await read_db.disconnect()
 
 
 @tag(["Root"])
@@ -57,11 +69,13 @@ async def index():
 @app.route("/games", methods=["POST"])
 async def create_game():
     """ Create a game """
-    db = await _get_db()
+    iter_val = next(iterator)
+    read_db = await _get_read_db(iter_val)
+    write_db = await _get_write_db()
     username = request.authorization.username
 
     # Open a file and load json from it
-    res = await db.fetch_one(
+    res = await read_db.fetch_one(
         """
         SELECT count(*) count FROM correct_words
         """
@@ -69,7 +83,7 @@ async def create_game():
     length = res.count
     uuid1 = str(uuid.uuid4())
     print(uuid1)
-    game_id = await db.execute(
+    await write_db.execute(
         """
         INSERT INTO games(game_id, username, secret_word_id) 
         VALUES(:uuid, :user, :secret_word_id) 
@@ -86,32 +100,34 @@ async def create_game():
 async def play_game(game_id):
     """ Play the game (creating a guess) """
     data = await request.json
-    db = await _get_db()
+    read_db = await _get_read_db(next(iterator))
+    write_db = await _get_write_db()
 
     username = request.authorization.username
 
-    return await play_game_or_check_progress(db, username, game_id, data["guess"])
+    return await play_game_or_check_progress(read_db, write_db, username, game_id, data["guess"])
 
 
 @tag(["Games"])
 @app.route("/games/<string:game_id>", methods=["GET"])
 async def check_game_progress(game_id):
     """ Check the state of a game that is in progress. If game is over show whether user won/lost and no. of guesses """
-    db = await _get_db()
+    read_db = await _get_read_db(next(iterator))
+    write_db = await _get_write_db()
     username = request.authorization.username
 
-    return await play_game_or_check_progress(db, username, game_id)
+    return await play_game_or_check_progress(read_db, write_db, username, game_id)
 
 
 @tag(["Statistics"])
 @app.route("/games", methods=["GET"])
 async def get_in_progress_games():
     """ Check the list of in-progress games for a particular user """
-    db = await _get_db()
+    read_db = await _get_read_db(next(iterator))
     username = request.authorization.username
 
     # showing only in-progress games
-    games_output = await db.fetch_all(
+    games_output = await read_db.fetch_all(
         """
         SELECT guess_remaining, game_id, state 
         FROM games 
@@ -134,7 +150,7 @@ async def get_in_progress_games():
 @app.route("/games/statistics", methods=["GET"])
 async def statistics():
     """ Checking the statistics for a particular user """
-    db = await _get_db()
+    db = await _get_read_db(next(iterator))
     username = request.authorization.username
 
     res_games = await db.fetch_all(
@@ -154,9 +170,9 @@ async def statistics():
     return games_stats
 
 
-async def play_game_or_check_progress(db, username, game_id, guess=None):
+async def play_game_or_check_progress(read_db, write_db, username, game_id, guess=None):
     states = {0: 'In Progress', 1: 'Win', 2: "Loss"}
-    games_output = await db.fetch_one(
+    games_output = await read_db.fetch_one(
         """
         SELECT correct_words.correct_word secret_word, guess_remaining, state 
         FROM games join correct_words WHERE username=:username 
@@ -176,15 +192,16 @@ async def play_game_or_check_progress(db, username, game_id, guess=None):
     state = 0
     guess_remaining = games_output["guess_remaining"]
 
-    if guess:
+    if guess is None:
+        guess_output = fetch_guesses(read_db, game_id)
+    else:
         if len(guess) != 5:
             abort(400, "Bad Request: Word length should be 5")
         # when the user guessed the correct word
         if guess == secret_word:
             state = 1
-            final_dec = "Win"
 
-        valid_word_output = await db.fetch_one(
+        valid_word_output = await read_db.fetch_one(
             """
             SELECT valid_word_id
             FROM valid_words 
@@ -204,8 +221,7 @@ async def play_game_or_check_progress(db, username, game_id, guess=None):
             # user lost the game
             if guess_remaining == 0 and state == 0:
                 state = 2
-                final_dec = "Loss"
-            await db.execute(
+            await write_db.execute(
                 """
                 UPDATE games 
                 SET guess_remaining=:guess_remaining, state=:state
@@ -214,48 +230,32 @@ async def play_game_or_check_progress(db, username, game_id, guess=None):
                 values={"guess_remaining": guess_remaining, "game_id": game_id, "state": state}
             )
             return {"game_id": game_id, "number_of_guesses": 6 - guess_remaining, "decision": states[state]}, 200
-        else:
-            await db.execute(
-                """
-                UPDATE games
-                SET guess_remaining=:guess_remaining
-                WHERE game_id=:game_id
-                """,
-                values={"guess_remaining": guess_remaining, "game_id": game_id}
-                )
 
-            guess_number = 6 - guess_remaining
-            valid_word_id = valid_word_output.valid_word_id
-            await db.execute(
-                """
-                INSERT INTO guesses(game_id, valid_word_id, guess_number)
-                VALUES(:game_id, :valid_word_id, :guess_number)
-                """,
-                values={"game_id": game_id, "valid_word_id": valid_word_id, "guess_number": guess_number}
-            )
-        if(state == 1 or state == 2):
-            if(state == 1):
-                final_score = guess_remaining+1
-            else:
-                final_score = 0
-            await db.execute(
-                """
-                INSERT INTO results(game_id, username, decision, final_score)
-                VALUES(:game_id, :username, :decision, :final_score)
-                """,
-                values={"game_id": game_id, "username": username, "decision": final_dec, "final_score": final_score}
-            )
-    # Prepare the response
-    guess_output = await db.fetch_all(
-        """
-        SELECT guess_number, valid_words.valid_word 
-        FROM guesses 
-        JOIN valid_words 
-        WHERE game_id=:game_id AND valid_words.valid_word_id=guesses.valid_word_id
-        ORDER BY guess_number
-        """,
-        values={"game_id": game_id}
-    )
+        # else prepare the response and insert into guesses afterwards to ensure read-your-write consistency
+        guess_number = 6 - guess_remaining
+        valid_word_id = valid_word_output.valid_word_id
+
+        guess_output = fetch_guesses(read_db, game_id)
+
+        new_guess = {"guess_number": guess_number, "valid_word": guess}
+        guess_output.append(new_guess)
+        await write_db.execute(
+            """
+            UPDATE games
+            SET guess_remaining=:guess_remaining
+            WHERE game_id=:game_id
+            """,
+            values={"guess_remaining": guess_remaining, "game_id": game_id}
+        )
+
+        await write_db.execute(
+            """
+            INSERT INTO guesses(game_id, valid_word_id, guess_number)
+            VALUES(:game_id, :valid_word_id, :guess_number)
+            """,
+            values={"game_id": game_id, "valid_word_id": valid_word_id, "guess_number": guess_number}
+        )
+
     guesses = []
     for guess_number, valid_word in guess_output:
         correct_positions, incorrect_positions = compare(secret_word, valid_word)
@@ -269,6 +269,22 @@ async def play_game_or_check_progress(db, username, game_id, guess=None):
         )
 
     return {"guesses": guesses, "guess_remaining": guess_remaining, "game_state": states[state]}, 200
+
+
+async def fetch_guesses(read_db, game_id):
+    # Prepare the response
+    guess_output = await read_db.fetch_all(
+        """
+        SELECT guess_number, valid_words.valid_word 
+        FROM guesses 
+        JOIN valid_words 
+        WHERE game_id=:game_id AND valid_words.valid_word_id=guesses.valid_word_id
+        ORDER BY guess_number
+        """,
+        values={"game_id": game_id}
+    )
+
+    return guess_output
 
 
 # Function to compare the guess to answer.
@@ -297,88 +313,11 @@ def compare(secret_word, guess):
 
     return correct_positions, incorrect_positions
 
-@tag(["Leaderboard"])
-@app.route("/leaderboard", methods=["GET"])
-async def leader_board():
-    """ Check the list of users in Top 10 of the leaderboard based on average scores """
-    db = await _get_db()
-    username = request.authorization.username
-
-    # showing only completed games
-    usernames = await db.fetch_all(
-        """
-        SELECT distinct(username)
-        FROM results 
-        ORDER BY username ASC
-        """
-    )   
-    result_games = []
-    for username in usernames:
-        all_results = await db.fetch_all(
-            """
-            SELECT final_score
-            FROM results 
-            WHERE username=:username  
-            """, 
-            values={"username":username[0]}
-        )
-        total = 0
-        count = 0
-        for final_score in all_results:
-            total = total + final_score[0]
-            count = count + 1
-        average = total/count
-        result_games.append({
-            "username": username[0],
-            "average": average
-        })
-
-    return result_games
-
-@tag(["Leaderboard"])
-@app.route("/leaderboard/<string:game_id>", methods=["GET"])
-async def games_result(game_id):
-    """ Fetch the final result of the users game using the game id """
-    db = await _get_db()
-    username = request.authorization.username
-
-    # showing only completed games
-    games_output = await db.fetch_all(
-        """
-        SELECT game_id, username, decision, final_score 
-        FROM results 
-        WHERE game_id =:game_id
-        """, 
-        values={"game_id":game_id}
-    )
-
-    result_game = []
-    for game_id, username, decision, final_score in games_output:
-        result_game.append({
-            "game_id": game_id,
-            "username": username,
-            "decision": decision,
-            "final_score": final_score
-        })
- 
-    return result_game
     
 # Error status: Client error.
 @app.errorhandler(RequestSchemaValidationError)
 def bad_request(e):
     return {"error": str(e.validation_error)}, 400
-
-
-# Error status: Cannot process request.
-@app.errorhandler(409)
-def conflict(e):
-    return {"error": str(e)}, 409
-
-
-# Error status: Unauthorized client.
-@app.errorhandler(401)
-def unauthorized(e):
-    return {}, 401, {"WWW-Authenticate": "Basic realm='Wordle Site'"}
 
 
 # Error status: Cannot or will not process the request.

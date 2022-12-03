@@ -1,17 +1,16 @@
 # Imports
-import random
 import json
 import asyncio
 import databases
 import toml
 from quart import Quart
 from quart_schema import QuartSchema
-import uuid
 
 # Initialize app
 app = Quart(__name__)
 QuartSchema(app)
 app.config.from_file(f"../etc/wordle.toml", toml.load)
+
 
 # Load json from file and convert unicode to string.
 def load_json_from_file(file_name):
@@ -23,11 +22,13 @@ def load_json_from_file(file_name):
         values.append(str(item))
     return values
 
+
 # Establish database connection.
 async def _get_db():
     db = databases.Database(app.config["DATABASES"]["GAME_URL"])
     await db.connect()
     return db
+
 
 # Populate valid and correct words into database.
 async def load_data(file_name, table_name):

@@ -23,14 +23,6 @@ CREATE TABLE guesses(
     FOREIGN KEY(valid_word_id) REFERENCES valid_words(valid_word_id)
 );
 
-CREATE TABLE results(
-	game_id VARCHAR,
-    username VARCHAR NOT NULL,
-    decision VARCHAR NOT NULL,
-    final_score INTEGER NOT NULL,
-    FOREIGN KEY(game_id) REFERENCES games(game_id)
-);
-
 CREATE INDEX games_idx_usernamestate ON games(username, state);
 CREATE INDEX valid_words_idx_validword ON valid_words(valid_word);
 CREATE INDEX guesses_idx_idnumber ON guesses(game_id, guess_number);

@@ -1,41 +1,21 @@
 # Imports
-import dataclasses
 import textwrap
-import databases
 import toml
-from quart import Quart, g, request, jsonify
-from quart_schema import QuartSchema, RequestSchemaValidationError, tag
-
+from quart import Quart, request, jsonify, abort
+from quart_schema import QuartSchema, tag
+import redis
 
 # Initialize the app
 app = Quart(__name__)
 QuartSchema(app, tags=[
-                       {"name": "Games", "description": "APIs for creating a game and playing a game for a particular user"},
-                       {"name": "Statistics", "description": "APIs for checking game statistics for a user"},
-                       {"name": "Root", "description": "Root path returning html"}])
+    {"name": "Leaderboard", "description": "APIs for posting the results of the leaderboard service"},
+    {"name": "Root", "description": "Root path returning html"}])
 app.config.from_file(f"./etc/wordle.toml", toml.load)
 
 
-@dataclasses.dataclass
-class Word:
-    guess: str
-
-
-# Establish database connection
-async def _get_db():
-    db = getattr(g, "_sqlite_db", None)
-    if db is None:
-        db = g._sqlite_db = databases.Database(app.config["DATABASES"]["GAME_URL"])
-        await db.connect()
-    return db
-
-
-# Terminate database connection
-@app.teardown_appcontext
-async def close_connection(exception):
-    db = getattr(g, "_sqlite_db", None)
-    if db is not None:
-        await db.disconnect()
+def _initialize_redis():
+    r = redis.Redis()
+    return r
 
 
 @tag(["Root"])
@@ -49,90 +29,66 @@ async def index():
         """
     )
 
+
 @tag(["Leaderboard"])
-@app.route("/leaderboard/<string:game_id>", methods=["GET"])
-async def games_result(game_id):
-    """ Fetch the final result of the users game using the game id """
-    db = await _get_db()
-    username = request.authorization.username
+@app.route("/results", methods=["POST"])
+async def add_game_results(game_id):
+    """ Posting the results of the game. Pass username, status as win/loss and the number of guesses"""
+    data = await request.json
+    r = _initialize_redis()
+    if 'username' not in data:
+        abort(400, "Please enter username")
+    if 'status' not in data or 'status' not in ['win', 'loss']:
+        abort(400, "Please pass the status of the game as either win or loss")
+    username = data['username']
+    status = data['status']
+    if status == 'win' and 'guess_number' not in data:
+        abort(400, "Please pass the guess number if game status is win")
 
-    # showing only in-progress games
-    games_output = await db.fetch_all(
-        """
-        SELECT game_id, username, decision, final_score 
-        FROM results 
-        WHERE game_id =:game_id
-        """, 
-        values={"game_id":game_id}
-    )
+    guess_number = data['guess_number']
 
-    result_game = []
-    for game_id, username, decision, final_score in games_output:
-        result_game.append({
-            "game_id": game_id,
-            "username": username,
-            "decision": decision,
-            "final_score": final_score
-        })
-    return result_game
+    # compute score from the number of guess and game status
+    if status == 'loss':
+        game_score = 0
+    else:
+        game_score = 6 - guess_number + 1
+
+    # if redis key is not created it automatically create a key
+
+    # increment total of the game score by the current game score
+    r.hincrby("users:" + username, "total_score", game_score)
+    total_score = int(r.hget("users:" + username, "total_score").decode("UTF-8"))
+
+    # increment the number of games by 1
+    r.hincrby("users:" + username, "game_count", 1)
+    number_of_games = int(r.hget("users:" + username, "game_count").decode("UTF-8"))
+
+    avg_score = total_score / number_of_games
+
+    r.zadd("wordle_leaderboard:" + username, {"users:" + username: avg_score})
+    return {"Message": "Game results successfully posted."}, 201
+
 
 @tag(["Leaderboard"])
 @app.route("/leaderboard", methods=["GET"])
-async def leader_board():
-    """ Check the list of users in Top 10 of the leaderboard based on average scores """
-    db = await _get_db()
-    username = request.authorization.username
+async def leaderboard():
+    """ Retrieve the list of top 10 users of the leaderboard based on their average scores """
+    r = _initialize_redis()
 
-    # showing only completed games
-    usernames = await db.fetch_all(
-        """
-        SELECT distinct(username)
-        FROM results 
-        ORDER BY username ASC
-        """
-    )   
-    result_games = []
-    #sorted_res = []
-    for username in usernames:
-        all_results = await db.fetch_all(
-            """
-            SELECT final_score
-            FROM results 
-            WHERE username=:username  
-            """, 
-            values={"username":username[0]}
-        )
-        total = 0
-        count = 0
-        for final_score in all_results:
-            total = total + final_score[0]
-            count = count + 1
-        average = total/count
-        result_games.append({
-            "username": username[0],
-            "average": average
-        })
-        #sorted_res = sorted(key=lambda x: x.average, reverse=True)
-    return result_games
+    avg_score_result = r.zrevrange("wordle_leaderboard", 0, 9, True)
+    # prepare response
 
+    # no users in the redis
+    if len(avg_score_result) == 0:
+        return "Please post results to retrieve the top 10 users by average score", 200
 
+    leaderboard_result = {}
 
-# Error status: Client error.
-@app.errorhandler(RequestSchemaValidationError)
-def bad_request(e):
-    return {"error": str(e.validation_error)}, 400
-
-
-# Error status: Cannot process request.
-@app.errorhandler(409)
-def conflict(e):
-    return {"error": str(e)}, 409
-
-
-# Error status: Unauthorized client.
-@app.errorhandler(401)
-def unauthorized(e):
-    return {}, 401, {"WWW-Authenticate": "Basic realm='Wordle Site'"}
+    for user, score in avg_score_result:
+        user = user.decode('UTF-8').strip(':')[1]
+        score = int(score.decode('UTF-8'))
+        leaderboard_result[user] = score
+    return leaderboard_result, 200
 
 
 # Error status: Cannot or will not process the request.

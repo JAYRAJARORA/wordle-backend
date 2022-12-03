@@ -35,7 +35,6 @@ async def _get_user_db():
 
 # insert into query for games and guesses table
 async def insert_into_games_sql(username):
-    print("Loading data into games table")
 
     db = await _get_game_db()
     res = await db.fetch_one(
@@ -76,7 +75,6 @@ async def insert_into_games_sql(username):
 
 # insert into queries user table
 async def insert_into_users_sql(username):
-    print("Loading data into users table")
     db = await _get_user_db()
 
     user = {"username": username, "password": "abc"}
