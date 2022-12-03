@@ -9,6 +9,7 @@ import uuid
 import hashlib
 import secrets
 import base64
+import itertools
 
 # Encryption type.
 ALGORITHM = "pbkdf2_sha256"
@@ -18,10 +19,19 @@ app = Quart(__name__)
 QuartSchema(app)
 app.config.from_file(f"../etc/wordle.toml", toml.load)
 
+db_list = ['PRIMARY_GAME_URL', 'SECONDARY_GAME_URL', 'TERTIARY_GAME_URL']
+iterator = itertools.cycle(db_list)
 
-# Establish database connection.
-async def _get_game_db():
-    db = databases.Database(app.config["DATABASES"]["GAME_URL"])
+
+# Establish database connection for games
+async def _get_game_read_db(db):
+    db = databases.Database(app.config["DATABASES"][db])
+    await db.connect()
+    return db
+
+
+async def _get_game_write_db():
+    db = databases.Database(app.config["DATABASES"]["PRIMARY_GAME_URL"])
     await db.connect()
     return db
 
@@ -36,40 +46,41 @@ async def _get_user_db():
 # insert into query for games and guesses table
 async def insert_into_games_sql(username):
 
-    db = await _get_game_db()
-    res = await db.fetch_one(
+    read_db = await _get_game_read_db(next(iterator))
+    write_db = await _get_game_write_db()
+
+    correct_words_result = await read_db.fetch_one(
         """
         SELECT count(*) count 
         FROM correct_words
         """
     )
-    length = res.count
-    
-    uuid1 = str(uuid.uuid4())
-    
-    # 1
-    await db.execute(
-        """
-        INSERT INTO games(game_id, username, secret_word_id)
-        VALUES(:uuid, :users, :secret_word_id)
-        """, 
-        values={"uuid": uuid1, "users": username, "secret_word_id": random.randint(1, length)}
-    )
-
-    res = await db.fetch_one(
+    correct_words_count = correct_words_result.count
+    valid_words_result = await read_db.fetch_one(
         """
         SELECT count(*) count
         FROM valid_words
         """
     )
-    length = res.count
+    valid_words_count = valid_words_result.count
 
-    await db.execute(
+    uuid1 = str(uuid.uuid4())
+    
+    # 1
+    await write_db.execute(
+        """
+        INSERT INTO games(game_id, username, secret_word_id)
+        VALUES(:uuid, :users, :secret_word_id)
+        """, 
+        values={"uuid": uuid1, "users": username, "secret_word_id": random.randint(1, correct_words_count)}
+    )
+
+    await write_db.execute(
         """
         INSERT INTO guesses(game_id, valid_word_id, guess_number)
         VALUES(:game_id, :valid_word_id, :guess_number)
         """,
-        values={"game_id": uuid1, "valid_word_id": random.randint(1, length), "guess_number": 1}
+        values={"game_id": uuid1, "valid_word_id": random.randint(1, valid_words_count), "guess_number": 1}
     )
 
 

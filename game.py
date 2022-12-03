@@ -25,7 +25,7 @@ class Word:
     guess: str
 
 
-db_list = ['GAME_URL_PRIMARY', 'GAME_URL_SECONDARY', 'GAME_URL_TERTIARY']
+db_list = ['PRIMARY_GAME_URL', 'SECONDARY_GAME_URL', 'TERTIARY_GAME_URL']
 iterator = itertools.cycle(db_list)
 
 
@@ -37,7 +37,7 @@ async def _get_read_db(db):
 
 
 async def _get_write_db():
-    db = g._sqlite_write_db = databases.Database(app.config["DATABASES"]['GAME_URL_PRIMARY'])
+    db = g._sqlite_write_db = databases.Database(app.config["DATABASES"]['PRIMARY_GAME_URL'])
     await db.connect()
     return db
 

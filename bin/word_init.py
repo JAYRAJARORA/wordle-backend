@@ -25,7 +25,7 @@ def load_json_from_file(file_name):
 
 # Establish database connection.
 async def _get_db():
-    db = databases.Database(app.config["DATABASES"]["GAME_URL"])
+    db = databases.Database(app.config["DATABASES"]["PRIMARY_GAME_URL"])
     await db.connect()
     return db
 
