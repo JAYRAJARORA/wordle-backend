@@ -1,40 +1,25 @@
 # Imports
-import textwrap
 import dataclasses
-import toml
-from quart import Quart, request, jsonify, abort
+from quart import Quart, jsonify, abort
 from quart_schema import QuartSchema, tag, validate_request, RequestSchemaValidationError
 import redis
-import collections
 
 # Initialize the app
 app = Quart(__name__)
 QuartSchema(app, tags=[
-    {"name": "Leaderboard", "description": "APIs for posting the results of the leaderboard service"},
-    {"name": "Root", "description": "Root path returning html"}])
-app.config.from_file(f"./etc/wordle.toml", toml.load)
+    {"name": "Leaderboard", "description": "APIs for posting the results of the leaderboard service"}])
+
 
 @dataclasses.dataclass
 class Result:
     username: str
     status: str
-    guess_number:int
+    guess_number: int
+
 
 def _initialize_redis():
     r = redis.Redis()
     return r
-
-
-@tag(["Root"])
-@app.route("/", methods=["GET"])
-async def index():
-    """ Root path, returns HTML """
-    return textwrap.dedent(
-        """
-        <h1>Wordle Game</h1>
-        <p>To play wordle, go to the <a href="http://tuffix-vm/docs">Games Docs</a></p>\n
-        """
-    )
 
 
 @tag(["Leaderboard"])
@@ -101,6 +86,7 @@ async def leaderboard():
 @app.errorhandler(400)
 def bad_request(e):
     return jsonify({'message': e.description}), 400
+
 
 # Error status: Client error.
 @app.errorhandler(RequestSchemaValidationError)
