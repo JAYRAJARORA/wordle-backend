@@ -85,9 +85,9 @@ async def create_game():
     print(uuid1)
     await write_db.execute(
         """
-        INSERT INTO games(game_id, username, secret_word_id) 
-        VALUES(:uuid, :user, :secret_word_id) 
-        """, 
+        INSERT INTO games(game_id, username, secret_word_id)
+        VALUES(:uuid, :user, :secret_word_id)
+        """,
         values={"uuid": uuid1, "user": username, "secret_word_id": random.randint(1, length)}
     )
 
@@ -129,10 +129,10 @@ async def get_in_progress_games():
     # showing only in-progress games
     games_output = await read_db.fetch_all(
         """
-        SELECT guess_remaining, game_id, state 
-        FROM games 
-        WHERE username =:username AND state = :state 
-        """, 
+        SELECT guess_remaining, game_id, state
+        FROM games
+        WHERE username =:username AND state = :state
+        """,
         values={"username": username, "state": 0}
     )
 
@@ -156,8 +156,8 @@ async def statistics():
     res_games = await db.fetch_all(
         """
         SELECT state, count(*)
-        FROM games 
-        WHERE username=:username 
+        FROM games
+        WHERE username=:username
         GROUP BY state
         """,
         values={"username": username}
@@ -174,8 +174,8 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
     states = {0: 'In Progress', 1: 'Win', 2: "Loss"}
     games_output = await read_db.fetch_one(
         """
-        SELECT correct_words.correct_word secret_word, guess_remaining, state 
-        FROM games join correct_words WHERE username=:username 
+        SELECT correct_words.correct_word secret_word, guess_remaining, state
+        FROM games join correct_words WHERE username=:username
         AND game_id=:game_id AND correct_words.correct_word_id=games.secret_word_id
         """,
         values={"game_id": game_id, "username": username}
@@ -193,7 +193,7 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
     guess_remaining = games_output["guess_remaining"]
 
     if guess is None:
-        guess_output = fetch_guesses(read_db, game_id)
+        guess_output = await fetch_guesses(read_db, game_id)
     else:
         if len(guess) != 5:
             abort(400, "Bad Request: Word length should be 5")
@@ -204,7 +204,7 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
         valid_word_output = await read_db.fetch_one(
             """
             SELECT valid_word_id
-            FROM valid_words 
+            FROM valid_words
             WHERE valid_word =:word
             """,
             values={"word": guess}
@@ -223,7 +223,7 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
                 state = 2
             await write_db.execute(
                 """
-                UPDATE games 
+                UPDATE games
                 SET guess_remaining=:guess_remaining, state=:state
                 WHERE game_id=:game_id
                 """,
@@ -235,10 +235,11 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
         guess_number = 6 - guess_remaining
         valid_word_id = valid_word_output.valid_word_id
 
-        guess_output = fetch_guesses(read_db, game_id)
+        guess_output = await fetch_guesses(read_db, game_id)
 
-        new_guess = {"guess_number": guess_number, "valid_word": guess}
+        new_guess = (guess_number, guess)
         guess_output.append(new_guess)
+
         await write_db.execute(
             """
             UPDATE games
@@ -275,9 +276,9 @@ async def fetch_guesses(read_db, game_id):
     # Prepare the response
     guess_output = await read_db.fetch_all(
         """
-        SELECT guess_number, valid_words.valid_word 
-        FROM guesses 
-        JOIN valid_words 
+        SELECT guess_number, valid_words.valid_word
+        FROM guesses
+        JOIN valid_words
         WHERE game_id=:game_id AND valid_words.valid_word_id=guesses.valid_word_id
         ORDER BY guess_number
         """,
@@ -313,7 +314,7 @@ def compare(secret_word, guess):
 
     return correct_positions, incorrect_positions
 
-    
+
 # Error status: Client error.
 @app.errorhandler(RequestSchemaValidationError)
 def bad_request(e):

@@ -1,8 +1,9 @@
 # Imports
 import textwrap
+import dataclasses
 import toml
 from quart import Quart, request, jsonify, abort
-from quart_schema import QuartSchema, tag
+from quart_schema import QuartSchema, tag, validate_request, RequestSchemaValidationError
 import redis
 import collections
 
@@ -13,6 +14,11 @@ QuartSchema(app, tags=[
     {"name": "Root", "description": "Root path returning html"}])
 app.config.from_file(f"./etc/wordle.toml", toml.load)
 
+@dataclasses.dataclass
+class Result:
+    username: str
+    status: str
+    guess_number:int
 
 def _initialize_redis():
     r = redis.Redis()
@@ -33,24 +39,24 @@ async def index():
 
 @tag(["Leaderboard"])
 @app.route("/results", methods=["POST"])
-async def add_game_results():
+@validate_request(Result)
+async def add_game_results(data):
     """ Posting the results of the game. Pass username, status as win/loss and the number of guesses"""
-    data = await request.json
+    data = dataclasses.asdict(data)
     r = _initialize_redis()
-    if 'username' not in data:
-        abort(400, "Please enter username")
-    if 'status' not in data or data['status'] not in ['win', 'loss']:
-        abort(400, "Please pass the status of the game as either win or loss")
-    username = data['username']
     status = data['status']
-    if status == 'win' and 'guess_number' not in data:
-        abort(400, "Please pass the guess number if game status is win")
+    username = data['username']
 
+    if status not in ['win', 'loss']:
+        abort(400, "Please pass the status of the game as either win or loss")
     # compute score from the number of guess and game status
     if status == 'loss':
         game_score = 0
     else:
-        guess_number = int(data['guess_number'])
+        guess_number = data['guess_number']
+        if guess_number < 1 or guess_number > 6:
+            abort(400, "Please enter the guess number between 1 and 6 if game status is win")
+
         game_score = 6 - guess_number + 1
 
     # if redis key is not created it automatically create a key
@@ -95,3 +101,8 @@ async def leaderboard():
 @app.errorhandler(400)
 def bad_request(e):
     return jsonify({'message': e.description}), 400
+
+# Error status: Client error.
+@app.errorhandler(RequestSchemaValidationError)
+def bad_request(e):
+    return {"error": str(e.validation_error)}, 400
