@@ -14,3 +14,6 @@ sqlite3 ./var/primary/mount/games.db  < ./share/games.sql
 
 # populate the user and games table with dummy values
 python3 ./bin/game_and_user_init.py
+
+# populate the dummy result data in redis for leaderboard microservice
+python3 ./bin/redis_init.py
