@@ -13,4 +13,5 @@
 !/var/tertiary/mount/.keep
 !/var/tertiary/data/.keep
 
+/var/user.db
 __pycache__/
