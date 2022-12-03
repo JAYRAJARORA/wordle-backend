@@ -1,10 +1,16 @@
 /var/primary/mount/*
-/var/primary/mount/*
-/var/secondary/mount/*
 /var/primary/data/*
+!/var/primary/mount/.keep
+!/var/primary/data/.keep
+
+/var/secondary/mount/*
 /var/secondary/data/*
+!/var/secondary/mount/.keep
+!/var/secondary/data/.keep
+
 /var/tertiary/mount/*
 /var/tertiary/data/*
+!/var/tertiary/mount/.keep
+!/var/tertiary/data/.keep
 
-/var/user.db
 __pycache__/
