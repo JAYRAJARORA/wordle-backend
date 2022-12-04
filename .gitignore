@@ -15,3 +15,5 @@
 
 /var/user.db
 __pycache__/
+.DS_Store
+var/.DS_Store
