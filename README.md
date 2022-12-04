@@ -42,22 +42,36 @@ $ sudo service nginx status
 $ cat /etc/hosts
 ```
 __Note:__ This project uses the hostname `tuffix-vm`. 
-3. Copy the VHost file in `/share` to `/etc/nginx/sites-enabled` then restart nginx 
+3. Go to the project's directory
+```
+cd project-name/
+```
+
+4. Copy the VHost file in `/share` to `/etc/nginx/sites-enabled` then restart nginx 
 ```
 $ sudo cp share/wordle /etc/nginx/sites-enabled/wordle
 $ sudo service nginx restart
 ```
 
 ### Initializing and Starting the Application
-1. Go to the project's directory
+1. Remove .keep files added in the application
+```
+rm var/primary/mount/.keep
+rm var/primary/data/.keep
+rm var/secondary/data/.keep
+rm var/secondary/mount/.keep
+rm var/tertiary/mount/.keep
+rm var/tertiary/data/.keep
+```
 2. Start three 3 instances of game, 1 instance of user, and 1 instance of leaderboard service with foreman
 ```
 foreman start
 ```
-3. Run the command below to initialize user and game databases and redis in-memory data store, populate them with dummy values.
+3. Run the command below to initialize user and game databases and redis in-memory data store, populate them with dummy values. Please wait as this will take some time
 ```
 ./bin/init.sh
 ```
+
 
 ## REST API Features
 - Register a user (includes password hashing)
