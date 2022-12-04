@@ -1,19 +1,19 @@
-# CPSC 449 Project 2 
-[Project 2](https://docs.google.com/document/d/1BXrmgSclvifgYWItGxxhZ72BrmiD5evXoRbA_uRP_jM/edit#) involves extending the mock Wordle backend application from [Project 1](https://docs.google.com/document/d/14YzD8w5SpJk0DqizgrgyOsXvQ2-rrd-39RUSe2GNvz4/edit) to include the following objectives:
-- Splitting monolithic code to separate functional services
-- Implementing nginx authentication to authenticate endpoints
-- Setting up the API gateway with reverse proxy and load balancing
+# CPSC 449 Project 3 
+ [Project 3](https://docs.google.com/document/d/1OWltxCFRsd2s4khOdfwKLZ3vqF6dsJ087nyMn0klcQs/edit) involves extending the mock Wordle backend application from [Project 1](https://docs.google.com/document/d/14YzD8w5SpJk0DqizgrgyOsXvQ2-rrd-39RUSe2GNvz4/edit) and splitting the monolithic code into seperate functional services, implementing nginx to authenticate endpoints and setting up API gateways with reverse proxy and load balancing from [Project 2](https://docs.google.com/document/d/1BXrmgSclvifgYWItGxxhZ72BrmiD5evXoRbA_uRP_jM/edit) to include the following objectives:
+- Configuring three replicas for the database associated with Games service. (Write requests go to the pirmary replica, and read requests can be made from either primary, secondary or tertiary)
+- Creation of new Leaderboard service which can post results of a game, and obtain the Top 10 players based on their average scores.
+- Use LiteFS and the Redis NoSQL database and client libraries to store data for leaderboard service.
 
-This project also builds upon concepts introduced in [Exercise 2](https://docs.google.com/document/d/1-tFBfCP2rhk5YFtXYpGD894Ghy4UY-J3o9Zs7abbS8c/edit) and [Exercise 3](https://docs.google.com/document/d/14i8cpm7z1oFh5y5gmAkQ39AH3Pu8oWRr6B6TOziGYhY/edit) with regards to setting up Nginx server and building indices.
+This project also builds upon concepts introduced in [Exercise 2](https://docs.google.com/document/d/1-tFBfCP2rhk5YFtXYpGD894Ghy4UY-J3o9Zs7abbS8c/edit), [Exercise 3](https://docs.google.com/document/d/14i8cpm7z1oFh5y5gmAkQ39AH3Pu8oWRr6B6TOziGYhY/edit) with regards to setting up Nginx server, building indices, and using redis NoSQL database and associated libraries.
 
 ### Authors
 Section 02
-Group 19
+Group 23
 Members:
-- Brent Pfefferle
-- Divyansh Mohan Rao
+- Harshith Harijeevan
+- Heet Savla
 - Jayraj Arora
-- Ken Cue
+- Yash Gandhi
 
 ## Setting Up
 ### Development Environment 
@@ -29,6 +29,8 @@ Tuffix 2020 (Linux)
 - Quart-Schema
 - Curl
 - HTTPie
+- redis
+- LiteFS
 
 ### VHost Setup
 1. Make sure that nginx is running in the background
@@ -48,13 +50,13 @@ $ sudo service nginx restart
 
 ### Initializing and Starting the Application
 1. Go to the project's directory
-2. Run the command below to initialize databases and populate them with values.
+2. Start the app with Foreman
+```
+foreman start
+```
+3. Run the command below to initialize databases and populate them with values.
 ```
 ./bin/init.sh
-```
-3. Start the app with Foreman
-```
-foreman start --formation "game=3,user=1"
 ```
 
 ## REST API Features
@@ -65,6 +67,8 @@ foreman start --formation "game=3,user=1"
 - Retrieve the state of a game in progress
 - List the games in progress for a user
 - Check the statistics for a particular user
+- Fetch the results of a game using the number of guesses taken.
+- Retrieve the top 10 users based on their average scores.
 
 ## Running the Application
 
@@ -110,4 +114,11 @@ http GET http://tuffix-vm/games/ --auth <username>:<password>
 ```
 http GET http://tuffix-vm/games/statistics --auth <username>:<password>
 ```
-
+- Fetch the results of a game using the number of guesses taken.
+```
+http GET http://127.0.0.1:5400/results guess_number=<Number from 1 to 6> status=<Win or Loss> username=<username>
+```
+- Retrieve the top 10 users based on their average scores.
+```
+http GET http://127.0.0.1:5400/leaderboard
+```
