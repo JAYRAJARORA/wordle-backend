@@ -1,13 +1,42 @@
 # Imports
 import dataclasses
+import os
+import socket
+import time
+
 from quart import Quart, jsonify, abort
 from quart_schema import QuartSchema, tag, validate_request, RequestSchemaValidationError
 import redis
+import httpx
 
 # Initialize the app
 app = Quart(__name__)
 QuartSchema(app, tags=[
     {"name": "Leaderboard", "description": "APIs for posting the results of the leaderboard service"}])
+
+#*** To register with the Games service at startup by making an HTTP request to the Games service using the HTTPX client library ***
+# Construct the callback url
+
+def client_register_url(url):
+    try:
+        app.logger.info("The client is registering url.")
+        result = httpx.post("http://tuffix-vm/client_register", data={"url": url})
+        if result.status_code != 200:
+        	result = client_register_url(callback_url)
+        return result
+    except httpx.HTTPError as e:
+        app.logger.error("Register call back url failed, retry now in 1 second.")
+        # wait one second then resend the request
+        time.sleep(1)
+        return client_register_url(url)
+
+# Get port number from system environment, if fail to get, then set the default port to 5400
+port = os.environ.get("PORT", 5400)
+# Form the callback url, this will form an address like: http://127.0.0.1:5400/
+# If you replace "localhost" with nothing or "tuffix-vm", you will get 127.0.1.1
+callback_url = "http://" + socket.gethostbyname(socket.getfqdn("localhost")) + ":" + port + "/"
+response = client_register_url(callback_url)
+
 
 
 @dataclasses.dataclass

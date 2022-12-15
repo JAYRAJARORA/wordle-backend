@@ -8,7 +8,8 @@ import databases
 import toml
 from quart import Quart, g, request, abort, jsonify
 from quart_schema import QuartSchema, RequestSchemaValidationError, validate_request, tag
-
+from redis.client import Redis
+from rq import Queue
 
 # Initialize the app
 app = Quart(__name__)
@@ -169,6 +170,21 @@ async def statistics():
 
     return games_stats
 
+@tag(["ClientRegister"])
+@app.route("/client_register", methods=["POST"])
+async def client_register():
+    # Allowing client registration
+    app.logger.info("Client is registering a new url")
+    data = await request.form
+    # Get the call back url from client
+    callback_url = data.get("url")
+    # Get readable database
+    read_db = await _get_read_db(next(iterator))
+    # Get writable database
+    write_db = await _get_write_db()
+    # Store the url in database
+    return await save_callbakc_urls(read_db, write_db, callback_url)
+
 
 async def play_game_or_check_progress(read_db, write_db, username, game_id, guess=None):
     states = {0: 'In Progress', 1: 'Win', 2: "Loss"}
@@ -229,6 +245,7 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
                 """,
                 values={"guess_remaining": guess_remaining, "game_id": game_id, "state": state}
             )
+
             return {"game_id": game_id, "number_of_guesses": 6 - guess_remaining, "decision": states[state]}, 200
 
         # else prepare the response and insert into guesses afterwards to ensure read-your-write consistency
@@ -287,7 +304,6 @@ async def fetch_guesses(read_db, game_id):
 
     return guess_output
 
-
 # Function to compare the guess to answer.
 def compare(secret_word, guess):
     secret_word_lst = [i for i in enumerate(secret_word)]
@@ -314,6 +330,22 @@ def compare(secret_word, guess):
 
     return correct_positions, incorrect_positions
 
+
+async def save_callbakc_urls(read_db, write_db, url):
+    # Before saving the url, check if the url is already existed
+    url_result = await read_db.fetch_one("select * from callback_urls where url=:url", {"url":url})
+
+    if url_result:
+        return {"message" : "The url is already in database, so skip saving."}, 200
+
+    guess_output = await write_db.execute(
+        """
+        INSERT INTO callback_urls(url)
+        VALUES(:url)
+        """,
+        values={"url": url}
+    )
+    return {"message" : "saved the callback url to database."}, 200
 
 # Error status: Client error.
 @app.errorhandler(RequestSchemaValidationError)

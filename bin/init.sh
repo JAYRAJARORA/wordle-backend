@@ -12,6 +12,9 @@ python3 ./bin/word_init.py
 # create other tables required for storing user information and playing the wordle game
 sqlite3 ./var/primary/mount/games.db  < ./share/games.sql
 
+# create other tables required for storing call back urls
+sqlite3 ./var/primary/mount/games.db < ./share/callback_urls.sql
+
 # populate the user and games table with dummy values
 python3 ./bin/game_and_user_init.py
 
