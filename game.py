@@ -248,7 +248,7 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
                 values={"guess_remaining": guess_remaining, "game_id": game_id, "state": state}
             )
             game_data = {"status": states[state], "username": username, "guess_number": guess_number}
-            enqueue_game_status(read_db, game_data)
+            await enqueue_game_status(read_db, game_data)
 
             return {"game_id": game_id, "number_of_guesses": 6 - guess_remaining, "decision": states[state]}, 200
 
