@@ -8,8 +8,10 @@ import databases
 import toml
 from quart import Quart, g, request, abort, jsonify
 from quart_schema import QuartSchema, RequestSchemaValidationError, validate_request, tag
-from redis.client import Redis
-from rq import Queue
+from redis import Redis
+import rq
+import httpx
+import time
 
 # Initialize the app
 app = Quart(__name__)
@@ -163,7 +165,7 @@ async def statistics():
         """,
         values={"username": username}
     )
-    states = {0: 'In Progress', 1: 'Win', 2: "Loss"}
+    states = {0: 'In Progress', 1: 'win', 2: "loss"}
     games_stats = {}
     for state, count in res_games:
         games_stats[states[state]] = count
@@ -187,7 +189,7 @@ async def client_register():
 
 
 async def play_game_or_check_progress(read_db, write_db, username, game_id, guess=None):
-    states = {0: 'In Progress', 1: 'Win', 2: "Loss"}
+    states = {0: 'In Progress', 1: 'win', 2: "loss"}
     games_output = await read_db.fetch_one(
         """
         SELECT correct_words.correct_word secret_word, guess_remaining, state
@@ -231,7 +233,7 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
 
         # Decrement the guess remaining
         guess_remaining = guess_remaining - 1
-
+        guess_number = 6 - guess_remaining
         # Game is over, update the game
         if guess_remaining == 0 or state:
             # user lost the game
@@ -245,11 +247,13 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
                 """,
                 values={"guess_remaining": guess_remaining, "game_id": game_id, "state": state}
             )
+            game_data = {"status": states[state], "username": username, "guess_number": guess_number}
+            enqueue_game_status(read_db, game_data)
 
             return {"game_id": game_id, "number_of_guesses": 6 - guess_remaining, "decision": states[state]}, 200
 
         # else prepare the response and insert into guesses afterwards to ensure read-your-write consistency
-        guess_number = 6 - guess_remaining
+
         valid_word_id = valid_word_output.valid_word_id
 
         guess_output = await fetch_guesses(read_db, game_id)
@@ -287,6 +291,24 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
         )
 
     return {"guesses": guesses, "guess_remaining": guess_remaining, "game_state": states[state]}, 200
+
+
+def send_scores_job(url, game_results):
+
+    response = httpx.post(url, data=game_results)
+    return response
+
+
+async def enqueue_game_status(read_db, game_results):
+    callback_url_output = await read_db.fetch_all("SELECT url from callback_urls")
+    # for each url enqueue a job to send the scores
+    for url in callback_url_output:
+        queue = rq.Queue(connection=Redis())
+        job = queue.enqueue(send_scores_job, url, game_results)
+
+        if job is not None:
+            time.sleep(2)
+            app.logger.info(job.result)
 
 
 async def fetch_guesses(read_db, game_id):
