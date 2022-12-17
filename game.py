@@ -295,14 +295,21 @@ async def play_game_or_check_progress(read_db, write_db, username, game_id, gues
 
 def send_scores_job(url, game_results):
 
-    response = httpx.post(url, data=game_results)
+    response = httpx.post(url, json=game_results)
     return response
 
 
 async def enqueue_game_status(read_db, game_results):
     callback_url_output = await read_db.fetch_all("SELECT url from callback_urls")
     # for each url enqueue a job to send the scores
-    for url in callback_url_output:
+    if len(callback_url_output) < 0:
+        return
+    callback_url = callback_url_output[0]
+    app.logger.info("Hereee-------")
+    app.logger.info(callback_url)
+    for url in callback_url:
+        print("inside")
+        print(url)
         queue = rq.Queue(connection=Redis())
         job = queue.enqueue(send_scores_job, url, game_results)
 

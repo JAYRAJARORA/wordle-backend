@@ -32,10 +32,10 @@ def client_register_url(url):
 
 
 # Get port number from system environment, if fail to get, then set the default port to 5400
-port = os.environ.get("PORT", 5400)
+port = os.environ.get("PORT", "5400")
 # Form the callback url, this will form an address like: http://127.0.0.1:5400/
 # If you replace "localhost" with nothing or "tuffix-vm", you will get 127.0.1.1
-callback_url = "http://" + socket.gethostbyname(socket.getfqdn("localhost")) + ":" + port + "/"
+callback_url = "http://" + socket.gethostbyname(socket.getfqdn("localhost")) + ":" + port + "/results"
 response = client_register_url(callback_url)
 
 
@@ -56,6 +56,10 @@ def _initialize_redis():
 @app.route("/results", methods=["POST"])
 @validate_request(Result)
 async def add_game_results(data):
+    app.logger.info("----------")
+    app.logger.info(data)
+    print('----------')
+    print(data)
     """ Posting the results of the game. Pass username, status as win/loss and the number of guesses"""
     data = dataclasses.asdict(data)
     r = _initialize_redis()
