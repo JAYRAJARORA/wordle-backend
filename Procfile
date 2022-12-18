@@ -4,4 +4,4 @@ primary: ./bin/litefs -config ./etc/primary.yml
 secondary: ./bin/litefs -config ./etc/secondary.yml
 tertiary: ./bin/litefs -config ./etc/tertiary.yml
 leaderboard: hypercorn leaderboard --reload --debug --bind wordle.local.gd:$PORT --access-logfile - --error-logfile - --log-level DEBUG
-rq worker --with-scheduler –verbose
+worker: rq worker --verbose
