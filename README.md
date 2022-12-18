@@ -1,15 +1,6 @@
 # CPSC 449 Project 4
 
  [Project 4]
- 
- In order to let the clients to register callback url, change the wordle nginx config file.
- 
- Add
- 
-         location /client_register{
-            proxy_pass http://backend/client_register;
-         }
-
 
  [Project 3](https://docs.google.com/document/d/1OWltxCFRsd2s4khOdfwKLZ3vqF6dsJ087nyMn0klcQs/edit) involves extending the base Wordle backend application from [Project 1](https://docs.google.com/document/d/14YzD8w5SpJk0DqizgrgyOsXvQ2-rrd-39RUSe2GNvz4/edit) and implementation of nginx to authenticate endpoints and load balancing from [Project 2](https://docs.google.com/document/d/1BXrmgSclvifgYWItGxxhZ72BrmiD5evXoRbA_uRP_jM/edit). This includes the following objectives:
 - Configuring replication using Litefs for the database associated with Games service. (Write requests go to the primary replica, and read requests can be made from either primary, secondary or tertiary replicas)
@@ -59,7 +50,7 @@ __Note:__ This project uses the hostname `tuffix-vm`.
 cd project-name/
 ```
 
-4. Copy the VHost file in `/share` to `/etc/nginx/sites-enabled` then restart nginx 
+4. Copy the VHost file in `/share` to `/etc/nginx/sites-enabled` then restart nginx. It contains the updated configuration for registering the callback url in the games service.
 ```
 $ sudo cp share/wordle /etc/nginx/sites-enabled/wordle
 $ sudo service nginx restart
@@ -75,7 +66,7 @@ rm var/secondary/mount/.keep
 rm var/tertiary/mount/.keep
 rm var/tertiary/data/.keep
 ```
-2. Start three 3 instances of game, 1 instance of user, and 1 instance of leaderboard service with foreman
+2. Run three 3 instances of game, 1 instance of user, 1 instance of leaderboard service, and the worker process to run the enqueued jobs
 ```
 foreman start
 ```
@@ -83,6 +74,11 @@ foreman start
 ```
 ./bin/init.sh
 ```
+4. Run the command below to add a job that retries the jobs failed if the leaderboard could not run.
+```
+crontab requeue_cron_job
+```
+
 
 
 ## REST API Features
@@ -93,7 +89,9 @@ foreman start
 - Retrieve the state of a game in progress
 - List the games in progress for a user
 - Check the statistics for a particular user
-- Post the results of a game taking input the game decision and the number of guesses.
+- Register the leaderboard url to the games service at startup of leaderboard service.
+- Enqueue jobs after the game has reached a decision(win/loss).
+- The job runs using the worker process that post the results of the game to the leaderboard service.
 - Retrieve the top 10 users based on their average scores.
 
 ## Running the Application
@@ -128,7 +126,7 @@ http POST http://tuffix-vm/games --auth <username>:<password>
 ```
 http GET http://tuffix-vm/games/<game_id> --auth <username>:<password>
 ```
-- Playing a certain game/making a guess
+- Playing a certain game/making a guess. This will trigger the enqueue job function that sends the scores to the leaderboard service.
 ```
 http POST http://tuffix-vm/games/<game_id> guess=<5-letter-word> --auth <username>:<password>
 ```
@@ -140,7 +138,7 @@ http GET http://tuffix-vm/games/ --auth <username>:<password>
 ```
 http GET http://tuffix-vm/games/statistics --auth <username>:<password>
 ```
-- Post the results of a game for the leaderboard service.
+- The results of the game get posted automatically when the game reaches a decision now.(unless the leaderboard service is down) Post the results of a game for the leaderboard service.
 ```
 http POST http://127.0.0.1:5400/results guess_number=<Number from 1 to 6> status=<win or loss> username=<username>
 ```
@@ -148,3 +146,8 @@ http POST http://127.0.0.1:5400/results guess_number=<Number from 1 to 6> status
 ```
 http GET http://tuffix-vm/leaderboard
 ```
+- To test whether the failed jobs run, comment the leaderboard service in Procfile, restart foreman and try playing a game. Now the job gets failed which can be seen in the redis-cli command. Run the leaderboard service as a separate service using the command: 
+```
+hypercorn leaderboard --reload --debug --bind localhost:5400 --access-logfile - --error-logfile - --log-level DEBUG
+```
+The failed job gets rerun whose output can be seen in the terminal.
