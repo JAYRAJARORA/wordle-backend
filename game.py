@@ -85,7 +85,7 @@ async def create_game():
     )
     length = res.count
     uuid1 = str(uuid.uuid4())
-    print(uuid1)
+
     await write_db.execute(
         """
         INSERT INTO games(game_id, username, secret_word_id)
@@ -305,11 +305,9 @@ async def enqueue_game_status(read_db, game_results):
     if len(callback_url_output) < 0:
         return
     callback_url = callback_url_output[0]
-    app.logger.info("Hereee-------")
     app.logger.info(callback_url)
     for url in callback_url:
-        print("inside")
-        print(url)
+
         queue = rq.Queue(connection=Redis())
         job = queue.enqueue(send_scores_job, url, game_results)
 
