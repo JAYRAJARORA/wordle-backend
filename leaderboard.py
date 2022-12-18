@@ -58,8 +58,6 @@ def _initialize_redis():
 async def add_game_results(data):
     app.logger.info("----------")
     app.logger.info(data)
-    print('----------')
-    print(data)
     """ Posting the results of the game. Pass username, status as win/loss and the number of guesses"""
     data = dataclasses.asdict(data)
     r = _initialize_redis()
@@ -109,7 +107,7 @@ async def leaderboard():
     # no users in the redis
     if len(avg_score_result) == 0:
         return "Please post results to retrieve the top 10 users by average score", 200
-    print(avg_score_result)
+
     leaderboard_result = []
 
     for user, score in avg_score_result:
