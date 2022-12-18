@@ -24,11 +24,6 @@ iterator = itertools.cycle(db_list)
 
 
 # Establish database connection for games
-async def _get_game_read_db(db):
-    db = databases.Database(app.config["DATABASES"][db])
-    await db.connect()
-    return db
-
 
 async def _get_game_write_db():
     db = databases.Database(app.config["DATABASES"]["PRIMARY_GAME_URL"])
@@ -45,18 +40,16 @@ async def _get_user_db():
 
 # insert into query for games and guesses table
 async def insert_into_games_sql(username):
-
-    read_db = await _get_game_read_db(next(iterator))
     write_db = await _get_game_write_db()
 
-    correct_words_result = await read_db.fetch_one(
+    correct_words_result = await write_db.fetch_one(
         """
         SELECT count(*) count 
         FROM correct_words
         """
     )
     correct_words_count = correct_words_result.count
-    valid_words_result = await read_db.fetch_one(
+    valid_words_result = await write_db.fetch_one(
         """
         SELECT count(*) count
         FROM valid_words
