@@ -1,4 +1,4 @@
-# CPSC 449 Project 2 
+# Wordle Backend
 [Project 2](https://docs.google.com/document/d/1BXrmgSclvifgYWItGxxhZ72BrmiD5evXoRbA_uRP_jM/edit#) involves extending the mock Wordle backend application from [Project 1](https://docs.google.com/document/d/14YzD8w5SpJk0DqizgrgyOsXvQ2-rrd-39RUSe2GNvz4/edit) to include the following objectives:
 - Splitting monolithic code to separate functional services
 - Implementing nginx authentication to authenticate endpoints
