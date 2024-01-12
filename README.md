@@ -1,4 +1,4 @@
-# CPSC 449 Project 3 
+# Wordle Backend
  [Project 3](https://docs.google.com/document/d/1OWltxCFRsd2s4khOdfwKLZ3vqF6dsJ087nyMn0klcQs/edit) involves extending the base Wordle backend application from [Project 1](https://docs.google.com/document/d/14YzD8w5SpJk0DqizgrgyOsXvQ2-rrd-39RUSe2GNvz4/edit) and implementation of nginx to authenticate endpoints and load balancing from [Project 2](https://docs.google.com/document/d/1BXrmgSclvifgYWItGxxhZ72BrmiD5evXoRbA_uRP_jM/edit). This includes the following objectives:
 - Configuring replication using Litefs for the database associated with Games service. (Write requests go to the primary replica, and read requests can be made from either primary, secondary or tertiary replicas)
 - Developing 2 new Leaderboard services which can post results of a game and obtain the Top 10 users based on their average scores.
