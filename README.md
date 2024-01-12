@@ -1,4 +1,4 @@
-# CPSC 449 Project 1 Objective
+# Wordle Backend
 - Develop back-end REST APIs for a game similar to Wordle.
 
 ## Project Members
